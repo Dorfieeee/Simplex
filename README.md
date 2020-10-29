@@ -1,5 +1,5 @@
 # Simplex
-Simple and ugly program coverting .ocw files into formatted .csv files
+Simple and ugly program for specific needs.
 ### Installation
 Simplex requires [Python](https://www.python.org/downloads/) v3.9+ to run installed on your OS.
 Older versions could not work as expected.
@@ -37,29 +37,16 @@ And of course Simplex itself is open source with a [public repository][dill]
 
 Want to contribute? Great!
 
-Make a change in your file and instantaneously see your updates!
+I'm aware this code is not great and I'm pretty new to coding so if you have any  
+recommendations how to make it better I'm all in.
 
-Open your favorite Terminal and run these commands.
-
-First Tab:
-```sh
-$ node app
-```
-
-Second Tab:
-```sh
-$ gulp watch
-```
-
-(optional) Third:
-```sh
-$ karma test
-```
+Pull request or email me.
 
 ### Todos
 
- - Write MORE Tests
- - Add Night Mode
+ - Compare mode
+ - Plot mode
+ - Better documentation
 
 License
 ----
