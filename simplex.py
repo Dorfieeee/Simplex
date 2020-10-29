@@ -128,26 +128,7 @@ def main(mode: str, files: tuple, dir_out: str, dir_in: str, plot) -> None:
 				write_csv_file(SUMMARY, OUTPUT_PATH + "/SUMMARY", RESULT_template)
 
 		if plot is True:
-			d = []
-			v = []
-			_d = []
-			_v = []
-			plot_filter(density, voltage, d, v)
-			plot_filter(_density, _voltage, _d, _v)
-
-			#plot_title = click.prompt(f"Enter title for plot from file {filename}.")
-			plot_title = filename
-
-			plt.figure()
-			plt.plot(v, d, color='black', label="Forward scan")
-			plt.plot(_v, _d, color='red', label="Reverse scan")
-			plt.title(plot_title)
-			plt.ylabel('Current Density (mA/cm2)')
-			plt.xlabel('Voltage (V)')
-			plt.legend()
-			plt.ylim(ymin=0)
-			plt.xlim(xmin=0)
-			plt.savefig(output_file)
+			draw_graph(filename, output_file, density, voltage, _density, _voltage)
 
 		time.sleep(0.01)
 
@@ -289,6 +270,27 @@ def progressBar(iterable, prefix = '', suffix = '', decimals = 1, length = 100, 
         printProgressBar(i + 1)
     # Print New Line on Complete
     print()
+
+def draw_graph(title, destination, density, voltage, _density, _voltage):
+	d = []
+	v = []
+	_d = []
+	_v = []
+
+	plot_filter(density, voltage, d, v)
+	plot_filter(_density, _voltage, _d, _v)
+
+	plt.figure()
+	plt.plot(v, d, color='black', label="Forward scan")
+	plt.plot(_v, _d, color='red', label="Reverse scan")
+	plt.title(title)
+	plt.ylabel('Current Density (mA/cm2)')
+	plt.xlabel('Voltage (V)')
+	plt.legend()
+	plt.ylim(ymin=0)
+	plt.xlim(xmin=0)
+
+	plt.savefig(destination)
 
 if __name__ == '__main__':
 	main()
