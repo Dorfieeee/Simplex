@@ -5,6 +5,7 @@ import os
 import re
 import time
 import functools
+import matplotlib.pyplot as plt
 
 USAGE = f"Usage: python {sys.argv[0]} [--help] | \
 		[--mode|-m <compute|compare|plot>] \
@@ -33,7 +34,8 @@ SUMMARY = []
 # INPUT DIRECTORY [optional]
 @click.option("--input", "-i", "dir_in", help="Explicitly select input directory",
 			  type=click.Path(exists=True))
-def main(mode: str, files: tuple, dir_out: str, dir_in: str) -> None:
+@click.option("--plot", "-p", is_flag=True)
+def main(mode: str, files: tuple, dir_out: str, dir_in: str, plot) -> None:
 	'''Program's description'''
 	if dir_in == None:
 		# Set files input to the current working directory as default
@@ -125,10 +127,38 @@ def main(mode: str, files: tuple, dir_out: str, dir_in: str) -> None:
 			if len(files) > 1:
 				write_csv_file(SUMMARY, OUTPUT_PATH + "/SUMMARY", RESULT_template)
 
+		if plot is True:
+			d = []
+			v = []
+			_d = []
+			_v = []
+			plot_filter(density, voltage, d, v)
+			plot_filter(_density, _voltage, _d, _v)
+
+			#plot_title = click.prompt(f"Enter title for plot from file {filename}.")
+			plot_title = filename
+
+			plt.figure()
+			plt.plot(v, d, color='black', label="Forward scan")
+			plt.plot(_v, _d, color='red', label="Reverse scan")
+			plt.title(plot_title)
+			plt.ylabel('Current Density (mA/cm2)')
+			plt.xlabel('Voltage (V)')
+			plt.legend()
+			plt.ylim(ymin=0)
+			plt.xlim(xmin=0)
+			plt.savefig(output_file)
+
 		time.sleep(0.01)
 
 
 #### FUNCTIONS DEFINITIONS ####
+def plot_filter(d, v, _d, _v):
+	for i in range(len(d)):
+		if d[i] > 0 and v[i] > 0:
+			_d.append(d[i])
+			_v.append(v[i])
+
 def read_file(path, destination):
 	row_counter = 0
 	with open(path, 'r', newline='') as f:
