@@ -2,6 +2,7 @@ import click
 import sys
 import csv
 import os
+os.environ['MPLCONFIGDIR'] = os.getcwd() + "/configs/"
 import re
 import time
 import functools
@@ -22,26 +23,37 @@ SUMMARY = []
 # Command line argument parser
 @click.command()
 # PROGRAM MODE OPTION [optional]
-@click.option("--mode", "-m", type=click.Choice(['compute','compare', 'plot']),
-			 help="Select program's mode", default='compute')
+@click.option("--mode", "-m", type=click.Choice(['single', 'dual']),
+			 help="Select program's mode", default='single')
 # TUPLE OF PROVIDED FILES [optional]
-@click.option("--single", "-s", "files", help="""Explicitly select one or more
+@click.option("--file", "-f", "files", help="""Explicitly select one or more
 			 files to process. Select all file in current working directory
 			 by default""", multiple=True, type=click.Path(exists=True))
 # OUPUT DIRECTORY [optional]
 @click.option("--output", "-o", "dir_out", help="Explicitly select output directory",
-			  type=click.Path())
+			  type=click.Path(exists=True))
 # INPUT DIRECTORY [optional]
 @click.option("--input", "-i", "dir_in", help="Explicitly select input directory",
 			  type=click.Path(exists=True))
-@click.option("--plot", "-p", is_flag=True)
-def main(mode: str, files: tuple, dir_out: str, dir_in: str, plot) -> None:
+@click.option("--reversed", "-r", is_flag=True, help="Reversed order of scan, reversed"
+				+ " scan followed with forward scan.")
+@click.option("--dark", "-d", type=click.Path(exists=True), help="Explicitly select path for" 
+				+ " dark current file.")
+@click.option("--light", "-l", type=click.Path(exists=True), help="Explicitly select path for" 
+				+ " light current file.")
+def main(mode: str, files: tuple, dir_out: str, dir_in: str, dark, light, reversed) -> None:
 	'''Program's description'''
 	if dir_in == None:
 		# Set files input to the current working directory as default
 		SOURCE_PATH = os.getcwd()
 	else:
 		SOURCE_PATH = dir_in
+
+	if mode == 'dual':
+		if light and dark:
+			files = (light, dark)
+		elif len(files) != 2:
+			raise SystemExit("There must be only 2 files in dual mode")			
 
 	if not files:
 		# File name pattern
@@ -58,11 +70,12 @@ def main(mode: str, files: tuple, dir_out: str, dir_in: str, plot) -> None:
 			files.sort(key=lambda name: sort_by_number(name))
 
 	if dir_out == None:
-		# Create new directory in cwd named after the first file
+		# Prompt for a foldername and create new directory
 		# Append "(attempt_counter)" to the directory name if another
-		# directory with the same name already exists MAX 99 
-		foldername = re.search(r"[\w\d,-]+(?=\.ocw)", files[0])[0]
-		if (OUTPUT_PATH := check_dirname(os.getcwd(), foldername)) is None:
+		# directory with the same name already exists MAX foldername(99) 
+		foldername = click.prompt('Enter name of your output directory')
+		OUTPUT_PATH = check_dirname(os.getcwd(), foldername)
+		if OUTPUT_PATH is None:
 			raise SystemExit(f"Could not create folder on path: {dir_out}")
 	else:
 		OUTPUT_PATH = dir_out
@@ -73,16 +86,14 @@ def main(mode: str, files: tuple, dir_out: str, dir_in: str, plot) -> None:
 		raise SystemExit(f"Could not create folder on path: {dir_out}\n" \
 						   "Make sure other folder with the same name doesn't already exist.")
 	
+	MASK_AREA = click.prompt(
+		"Enter mask-area value which will be applied to all files",
+			value_proc=check_maskarea)
 
-	if mode == 'compute':
-		MASK_AREA = click.prompt(
-			"Enter mask-area value which will be applied to all files",
-			 value_proc=check_maskarea)
+	#--------------------------------------------------------------------------------------
 
 	for file in progressBar(files, prefix = 'Progress:', suffix = 'Complete', length = 50):	
-		if mode == 'compare' or mode == 'plot':
-			raise SystemExit("This function is not yet supported\nI'm working on it!")
-
+		
 		scan = []
 		output = []
 		filename = re.search(r"[\w\d,-]+(?=\.ocw)", file)[0]
@@ -90,7 +101,8 @@ def main(mode: str, files: tuple, dir_out: str, dir_in: str, plot) -> None:
 		output_file = f"{OUTPUT_PATH}/{filename}"
 
 		# READ SOURCE
-		if (source_file_length := read_file(source_file, scan)) == 0:
+		source_file_length = read_file(source_file, scan)
+		if source_file_length == 0:
 			click.echo(f"File {file} has no records")
 			continue
 
@@ -100,45 +112,68 @@ def main(mode: str, files: tuple, dir_out: str, dir_in: str, plot) -> None:
 		_density = []
 		power = []
 		_power = []
-		m = int(source_file_length / 2)					# middle index of source file
-		for i in range(m):
-			voltage.append(calc_voltage(scan[i][0]))
-			_voltage.append(calc_voltage(scan[i + m][0]))
-			density.append(calc_density(scan[i][1], MASK_AREA))
-			_density.append(calc_density(scan[i + m][1], MASK_AREA))
+
+		middle_index = int(source_file_length / 2)		# middle index of source file
+
+		# LOGIC for reversed order of data in source file
+		if not reversed:
+			f_index = 0
+			r_index = middle_index
+		else:
+			f_index = middle_index
+			r_index = 0
+
+		for i in range(middle_index):
+			voltage.append(calc_voltage(scan[i + f_index][0]))
+			_voltage.append(calc_voltage(scan[i + r_index][0]))
+			density.append(calc_density(scan[i + f_index][1], MASK_AREA))
+			_density.append(calc_density(scan[i + r_index][1], MASK_AREA))
 			power.append(calc_power(voltage[i], density[i]))
 			_power.append(calc_power(_voltage[i], _density[i]))
 
-		if mode == 'compute':
-			# WRITE OUTPUT
-			output = transpose([voltage, density, _voltage, _density, power, _power])
-			write_csv_file(output, output_file, OUTPUT_template)
+		# WRITE OUTPUT
+		output = transpose([voltage, density, _voltage, _density, power, _power])
+		write_csv_file(output, output_file, OUTPUT_template)
 
-			# WRITE RESULTS
-			results = [
-				result_row("Forward", power, voltage, density),
-				result_row("Reverse", _power, _voltage, _density)
-			]
-			write_csv_file(results, output_file + "-result", RESULT_template)
-			
-			for row in results:
-				SUMMARY.append([filename] + row)
+		# WRITE RESULTS
+		results = [
+			result_row("Forward", power, voltage, density),
+			result_row("Reverse", _power, _voltage, _density)
+		]
+		write_csv_file(results, output_file + "-result", RESULT_template)
+		
+		for row in results:
+			SUMMARY.append([filename] + row)
+
+		if mode == 'single':
 
 			if len(files) > 1:
 				write_csv_file(SUMMARY, OUTPUT_PATH + "/SUMMARY", RESULT_template)
-
-		if plot is True:
+		
 			draw_graph(filename, output_file, density, voltage, _density, _voltage)
+
+		# elif mode == 'dual':
+			
+		# 	write_csv_file(SUMMARY, OUTPUT_PATH + "/SUMMARY", RESULT_template)
+
+		# 	draw_dual_graph(filename)
 
 		time.sleep(0.01)
 
+#--------------------------------------------------------------------------------------
 
 #### FUNCTIONS DEFINITIONS ####
-def plot_filter(d, v, _d, _v):
-	for i in range(len(d)):
-		if d[i] > 0 and v[i] > 0:
-			_d.append(d[i])
-			_v.append(v[i])
+def plot_filter(d, v, _d, _v, dark=False):
+	if not dark:
+		for i in range(len(d)):
+			if d[i] > 0 and v[i] > 0:
+				_d.append(d[i])
+				_v.append(v[i])
+	else:
+		for i in range(len(d)):
+			if v[i] > 0:
+				_d.append(d[i])
+				_v.append(v[i])
 
 def read_file(path, destination):
 	row_counter = 0
@@ -281,16 +316,47 @@ def draw_graph(title, destination, density, voltage, _density, _voltage):
 	plot_filter(_density, _voltage, _d, _v)
 
 	plt.figure()
+
 	plt.plot(v, d, color='black', label="Forward scan")
 	plt.plot(_v, _d, color='red', label="Reverse scan")
+
 	plt.title(title)
+
 	plt.ylabel('Current Density (mA/cm2)')
 	plt.xlabel('Voltage (V)')
+
 	plt.legend()
+
 	plt.ylim(ymin=0)
 	plt.xlim(xmin=0)
 
 	plt.savefig(destination)
+
+# def draw_dual_graph(title):
+# 	d = []
+# 	v = []
+# 	_d = []
+# 	_v = []
+
+# 	plot_filter(density, voltage, d, v)
+# 	plot_filter(_density, _voltage, _d, _v)
+
+# 	plt.figure()
+
+# 	plt.plot(v, d, color='black', label="Forward scan")
+# 	plt.plot(_v, _d, color='red', label="Reverse scan")
+
+# 	plt.title(title)
+
+# 	plt.ylabel('Current Density (mA/cm2)')
+# 	plt.xlabel('Voltage (V)')
+
+# 	plt.legend()
+
+# 	plt.ylim(ymin=0)
+# 	plt.xlim(xmin=0)
+
+# 	return plt
 
 if __name__ == '__main__':
 	main()
