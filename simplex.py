@@ -7,29 +7,32 @@ import click
 import matplotlib.pyplot as plt
 
 # Command line argument parser
-@click.command(options_metavar="mode <file> <input> <output>")
+@click.command(options_metavar="mode <input> <output>")
 # PROGRAM MODE OPTION [optional]
-@click.option("--mode", "-m", type=click.Choice(['gvc', 'imp']), required=True,
-			 help="Select program's mode [gvc - gv curve; imp - impedance]")
+@click.option("--mode", "-m", type=click.Choice(['jvc', 'imp']), required=True,
+			 help="Select program's mode [jvc - J-V curve; imp - impedance]")
+
+# --- NOT SUPPORTED ---
 # TUPLE OF PROVIDED FILES [optional]
-@click.option("--file", "-f", "files", help="""Provide one or more
-			 files(filenames) to process. Select all files in current working directory
-			 by default""", multiple=True, type=click.Path(exists=True))
+# @click.option("--file", "-f", "files", help="""Provide one or more
+# 			 files(filenames) to process. Select all files in current working directory
+# 			 by default""", multiple=True, type=click.Path(exists=True))
+# --- NOT SUPPORTED ---
+
 # OUPUT DIRECTORY [optional]
-@click.option("--output", "-o", "dir_out", help="Provide output directory path",
-			  type=click.Path(exists=True))
+@click.option("--output", "-o", "dir_out", help="Provide output directory path")
 # INPUT DIRECTORY [optional]
-@click.option("--input", "-i", "dir_in", help="Provide input directory path",
+@click.option("--input", "-i", "dir_in", help="Provide input directory path(must exist)",
 			  type=click.Path(exists=True))
 @click.option("--reversed", "-r", is_flag=True, help="Reversed order of scan, reversed"
-				+ " scan followed with forward scan. (gvc mode related)")
-def main(mode, files, dir_out, dir_in, reversed) -> None:
+				+ " scan followed with forward scan. (jvc mode related)")
+def main(mode, dir_out, dir_in, reversed) -> None:
 
 	if dir_in == None:
 	# Set files input to the current working directory as default
 		SOURCE_PATH = os.getcwd()
 	else:
-		SOURCE_PATH = dir_in	
+		SOURCE_PATH = os.path.abspath(dir_in)	
 
 	if dir_out == None:
 	# Prompt for a foldername and create new directory, if there's name collision, append numeric value
@@ -38,54 +41,28 @@ def main(mode, files, dir_out, dir_in, reversed) -> None:
 		if OUTPUT_PATH is None:
 			raise SystemExit(f"Could not create folder on path: {dir_out}")
 	else:
-		OUTPUT_PATH = dir_out
+		OUTPUT_PATH = os.path.abspath(dir_out)
 
-
-	if mode == "gvc":
+	#--------------------------------------------------------------------------------------
+	if mode == "jvc":
+		extension = "ocw"
 		OUTPUT_template = ["+V [V]", "-V [V]", "+J [mA/cm2]", "-J [mA/cm2]", "+P [W/cm2]", "-P [W/cm2]"]
 		RESULT_template = ["Scan", "Power max", "Voc [V]","Jsc [mA/cm2]", "FF", "PCE (%)"]
 		# Initialize global variables 
 		SUMMARY = []			
 		MASK_AREA = click.prompt(
 			"Enter mask-area value which will be applied to all files",
-				value_proc=check_maskarea)
-		extension = "ocw"
-		filename_pattern = re.compile(f".{extension}$")
-		
-	if mode == "imp":
-		extension = "P00"
-		filename_pattern = re.compile(f".{extension}$")
+				value_proc=check_maskarea)		
+		files = get_files(SOURCE_PATH, extension)
+		make_dir(OUTPUT_PATH, dir_out)
 
-	# If user does not provide file path/s, select all files in current directory by default
-	if not files:
-		# Select all files inside source directory which match required pattern
-		files = [file for file in os.listdir(SOURCE_PATH) if filename_pattern.search(file)]
-		if not files:
-			raise SystemExit(f"No files to process found in {SOURCE_PATH}")
-		# If all files are numbered, sort them by number within their name
-		# If any of them is not numbered, pass
-		# if [file for file in files if re.search(r"\d", file) is None]:
-		# 	pass
-		# else:
-		# 	files.sort(key=lambda name: sort_by_number(name))
-	
-	# Create directory
-	try:
-		os.mkdir(OUTPUT_PATH)
-		pass
-	except OSError:
-		raise SystemExit(f"Could not create folder on path: {dir_out}\n" \
-						"Make sure other folder with the same name doesn't already exist.") 
-
-#--------------------------------------------------------------------------------------
-	if mode == "gvc":
 		for file in progressBar(files, prefix = 'Progress:', suffix = 'Complete', length = 50):				
 			filename = re.search(rf".+(?=\.{extension})", file)[0]
 			source_file = f"{SOURCE_PATH}/{file}"
 			output_file = f"{OUTPUT_PATH}/{filename}"
 
 			# READ SOURCE
-			scan, source_file_length = read_gvc_file(source_file)
+			scan, source_file_length = read_jvc_file(source_file)
 			if source_file_length == 0:
 				click.echo(f"File {file} has no records")
 				continue
@@ -136,9 +113,13 @@ def main(mode, files, dir_out, dir_in, reversed) -> None:
 
 			time.sleep(0.01)
 
-		finish()
+		finish(OUTPUT_PATH)
 
 	if mode == "imp":
+		extension = "P00"
+		files = get_files(SOURCE_PATH, extension)
+		make_dir(OUTPUT_PATH, dir_out)
+
 		for file in progressBar(files, prefix = 'Progress:', suffix = 'Complete', length = 50):						
 			filename = re.search(rf".+(?=\.{extension})", file)[0]
 			source_file = f"{SOURCE_PATH}/{file}"
@@ -157,12 +138,29 @@ def main(mode, files, dir_out, dir_in, reversed) -> None:
 
 			time.sleep(0.01)
 
-		finish()
-#--------------------------------------------------------------------------------------
+		finish(OUTPUT_PATH)
+	#--------------------------------------------------------------------------------------
 
 #### FUNCTIONS DEFINITIONS ####
-def finish():
-	click.echo("Done! :)")
+def get_files(path, extension):
+	# Select all files inside source directory which match required pattern
+	filename_pattern = re.compile(f".{extension}$")
+	files = [file for file in os.listdir(path) if filename_pattern.search(file)]
+	if not files:
+		raise SystemExit(f"No files to process found at {path}")
+	return files
+
+def make_dir(path, user_path):
+	# Create directory
+	try:
+		os.mkdir(path)
+		pass
+	except OSError:
+		raise SystemExit(f"Could not create folder at path: {user_path}\n" \
+						"Make sure other folder with the same name doesn't already exist.") 
+
+def finish(path):
+	click.echo(f"Your files can be found at path {path}")
 
 def read_imp_file(path):
 	data = []
@@ -188,7 +186,7 @@ def plot_filter(d, v, _d, _v):
 			_d.append(d[i])
 			_v.append(v[i])
 
-def read_gvc_file(path):
+def read_jvc_file(path):
 	scan = []
 	row_counter = 0
 	with open(path, 'r', newline='') as f:
@@ -251,7 +249,7 @@ def sort_by_number(el):
 	m = re.match(r"\D+(?P<number>\d+)\D", el)
 	return int(m.group('number'))
 
-def check_dirname(path, name):
+def check_dirname(path, name=''):
 	local_paths = os.listdir(path)
 	last_with_name = sorted([fname for fname in local_paths if re.match(rf"^{name}", fname)], reverse=True)
 	if not last_with_name:
