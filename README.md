@@ -36,31 +36,7 @@ And of course Simplex itself is open source with a [public repository][dill]
 
 ### Development
 
-Want to contribute? Great!
-
-Make a change in your file and instantaneously see your updates!
-
-Open your favorite Terminal and run these commands.
-
-First Tab:
-```sh
-$ node app
-```
-
-Second Tab:
-```sh
-$ gulp watch
-```
-
-(optional) Third:
-```sh
-$ karma test
-```
-
-### Todos
-
- - Write MORE Tests
- - Add Night Mode
+Want to contribute? Great! Let me know!
 
 License
 ----
