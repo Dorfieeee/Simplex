@@ -11,59 +11,67 @@ import matplotlib.pyplot as plt
 # PROGRAM MODE OPTION [optional]
 @click.option("--mode", "-m", type=click.Choice(['jvc', 'imp']), required=True,
 			 help="Select program's mode [jvc - J-V curve; imp - impedance]")
-
-# --- NOT SUPPORTED ---
-# TUPLE OF PROVIDED FILES [optional]
-# @click.option("--file", "-f", "files", help="""Provide one or more
-# 			 files(filenames) to process. Select all files in current working directory
-# 			 by default""", multiple=True, type=click.Path(exists=True))
-# --- NOT SUPPORTED ---
-
+# TUPLE OF PROVIDED FILES PATHS [optional]
+@click.option("--file", "-f", "user_file_paths", help="""Provide one or more
+			 files(filenames) to process. Select all files in current working directory
+			 by default""", multiple=True, type=click.Path(exists=True))
 # OUPUT DIRECTORY [optional]
-@click.option("--output", "-o", "dir_out", help="Provide output directory path")
+@click.option("--output", "-o", "user_path_out", help="Provide output directory path")
 # INPUT DIRECTORY [optional]
-@click.option("--input", "-i", "dir_in", help="Provide input directory path(must exist)",
+@click.option("--input", "-i", "user_path_in", help="Provide input directory path(must exist)",
 			  type=click.Path(exists=True))
 @click.option("--reversed", "-r", is_flag=True, help="Reversed order of scan, reversed"
 				+ " scan followed with forward scan. (jvc mode related)")
-def main(mode, dir_out, dir_in, reversed) -> None:
+def main(mode, user_path_out, user_path_in, user_file_paths, reversed) -> None:
 
-	if dir_in == None:
+	if user_path_in == None:
 	# Set files input to the current working directory as default
-		SOURCE_PATH = os.getcwd()
+		ABS_PATH_IN = os.getcwd()
 	else:
-		SOURCE_PATH = os.path.abspath(dir_in)	
+		ABS_PATH_IN = os.path.abspath(user_path_in)	
 
-	if dir_out == None:
+	if user_path_out == None:
 	# Prompt for a foldername and create new directory, if there's name collision, append numeric value
 		foldername = click.prompt('Enter name of your output directory')
-		OUTPUT_PATH = check_dirname(os.getcwd(), foldername)
-		if OUTPUT_PATH is None:
-			raise SystemExit(f"Could not create folder on path: {dir_out}")
+		ABS_PATH_OUT = check_dirname(os.getcwd(), foldername)
+		if ABS_PATH_OUT is None:
+			raise SystemExit(f"Could not create folder on path: {user_path_out}")
 	else:
-		OUTPUT_PATH = os.path.abspath(dir_out)
+		ABS_PATH_OUT = os.path.abspath(user_path_out)
+
+	_user_file_paths = []
+	if user_file_paths:
+		for f in user_file_paths:
+			if os.path.exists(f):
+				_user_file_paths.append(f)
+			else:
+				raise SystemExit(f"File at {f} could not be found.")
+
 
 	#--------------------------------------------------------------------------------------
 	if mode == "jvc":
 		extension = "ocw"
-		OUTPUT_template = ["+V [V]", "-V [V]", "+J [mA/cm2]", "-J [mA/cm2]", "+P [W/cm2]", "-P [W/cm2]"]
-		RESULT_template = ["Scan", "Power max", "Voc [V]","Jsc [mA/cm2]", "FF", "PCE (%)"]
-		# Initialize global variables 
-		SUMMARY = []			
-		MASK_AREA = click.prompt(
-			"Enter mask-area value which will be applied to all files",
+		jvc_template_out = ["+V [V]", "-V [V]", "+J [mA/cm2]", "-J [mA/cm2]", "+P [W/cm2]", "-P [W/cm2]"]
+		jvc_result_template = ["Scan", "Power max", "Voc [V]","Jsc [mA/cm2]", "FF", "PCE (%)"]
+		jvc_summary = []			
+		jvc_mask_area = click.prompt(
+			"Enter mask-area value which will be applied to all provided files.",
 				value_proc=check_maskarea)		
-		files = get_files(SOURCE_PATH, extension)
-		make_dir(OUTPUT_PATH, dir_out)
+		file_paths = _user_file_paths or get_files_at(ABS_PATH_IN, extension)
+		make_dir_at(ABS_PATH_OUT, user_path_out)
 
-		for file in progressBar(files, prefix = 'Progress:', suffix = 'Complete', length = 50):				
-			filename = re.search(rf".+(?=\.{extension})", file)[0]
-			source_file = f"{SOURCE_PATH}/{file}"
-			output_file = f"{OUTPUT_PATH}/{filename}"
+		for file in progressBar(file_paths, prefix = 'Progress:', suffix = 'Complete', length = 50):				
+			filename = extract_filename(file, extension)
+			if user_file_paths:
+				file_path_in = file
+			else:
+				file_path_in = f"{ABS_PATH_IN}/{file}"
+
+			file_path_out = f"{ABS_PATH_OUT}/{filename}"
 
 			# READ SOURCE
-			scan, source_file_length = read_jvc_file(source_file)
-			if source_file_length == 0:
+			scan, file_path_in_length = read_jvc_file(file_path_in)
+			if file_path_in_length == 0:
 				click.echo(f"File {file} has no records")
 				continue
 
@@ -74,7 +82,7 @@ def main(mode, dir_out, dir_in, reversed) -> None:
 			power = []
 			_power = []
 
-			middle_index = int(source_file_length / 2)		# middle index of source file
+			middle_index = int(file_path_in_length / 2)		# middle index of source file
 
 			# LOGIC for reversed order of data in source file
 			if not reversed:
@@ -87,46 +95,46 @@ def main(mode, dir_out, dir_in, reversed) -> None:
 			for i in range(middle_index):
 				voltage.append(calc_voltage(scan[i + f_index][0]))
 				_voltage.append(calc_voltage(scan[i + r_index][0]))
-				density.append(calc_density(scan[i + f_index][1], MASK_AREA))
-				_density.append(calc_density(scan[i + r_index][1], MASK_AREA))
+				density.append(calc_density(scan[i + f_index][1], jvc_mask_area))
+				_density.append(calc_density(scan[i + r_index][1], jvc_mask_area))
 				power.append(calc_power(voltage[i], density[i]))
 				_power.append(calc_power(_voltage[i], _density[i]))
 
 			# WRITE OUTPUT
 			output = transpose([voltage, density, _voltage, _density, power, _power])
-			write_csv_file(output, output_file, OUTPUT_template)
+			write_csv_file(output, file_path_out, jvc_template_out)
 
 			# WRITE RESULTS
 			results = [
 				result_row("Forward", power, voltage, density),
 				result_row("Reverse", _power, _voltage, _density)
 			]
-			write_csv_file(results, output_file + "-result", RESULT_template)
+			write_csv_file(results, file_path_out + "-result", jvc_result_template)
 			
 			for row in results:
-				SUMMARY.append([filename] + row)
+				jvc_summary.append([filename] + row)
 
-			if len(files) > 1:
-				write_csv_file(SUMMARY, OUTPUT_PATH + "/SUMMARY", RESULT_template)
+			if len(file_paths) > 1:
+				write_csv_file(jvc_summary, ABS_PATH_OUT + "/jvc_summary", jvc_result_template)
 		
-			draw_graph(filename, output_file, density, voltage, _density, _voltage)
+			draw_graph(filename, file_path_out, density, voltage, _density, _voltage)
 
 			time.sleep(0.01)
 
-		finish(OUTPUT_PATH)
+		finish(ABS_PATH_OUT)
 
 	if mode == "imp":
 		extension = "P00"
-		files = get_files(SOURCE_PATH, extension)
-		make_dir(OUTPUT_PATH, dir_out)
+		file_paths = _user_file_paths or get_files_at(ABS_PATH_IN, extension)
+		make_dir_at(ABS_PATH_OUT, user_path_out)
 
-		for file in progressBar(files, prefix = 'Progress:', suffix = 'Complete', length = 50):						
-			filename = re.search(rf".+(?=\.{extension})", file)[0]
-			source_file = f"{SOURCE_PATH}/{file}"
-			output_file = f"{OUTPUT_PATH}/{filename}"
+		for file in progressBar(file_paths, prefix = 'Progress:', suffix = 'Complete', length = 50):						
+			filename = extract_filename(file, extension)
+			file_path_in = f"{ABS_PATH_IN}/{file}"
+			file_path_out = f"{ABS_PATH_OUT}/{filename}"
 
 			# read source
-			data = read_imp_file(source_file)
+			data = read_imp_file(file_path_in)
 			if not data:
 				click.echo(f"File {file} has no records to process.")
 				continue
@@ -134,23 +142,28 @@ def main(mode, dir_out, dir_in, reversed) -> None:
 			data = format_imp_data(data)
 
 			# write source
-			write_imp_file(data, output_file)
+			write_imp_file(data, file_path_out)
 
 			time.sleep(0.01)
 
-		finish(OUTPUT_PATH)
+		finish(ABS_PATH_OUT)
 	#--------------------------------------------------------------------------------------
 
 #### FUNCTIONS DEFINITIONS ####
-def get_files(path, extension):
+def extract_filename(path, extension):
+	pattern = re.compile(f"([^<>:;,?\"*|\\\/]+)\.{extension}$")
+	result = pattern.search(path)
+	return result.group(1)
+
+def get_files_at(path, with_extension):
 	# Select all files inside source directory which match required pattern
-	filename_pattern = re.compile(f".{extension}$")
+	filename_pattern = re.compile(f".{with_extension}$")
 	files = [file for file in os.listdir(path) if filename_pattern.search(file)]
 	if not files:
 		raise SystemExit(f"No files to process found at {path}")
 	return files
 
-def make_dir(path, user_path):
+def make_dir_at(path, user_path):
 	# Create directory
 	try:
 		os.mkdir(path)
