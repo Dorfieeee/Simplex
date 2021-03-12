@@ -15,7 +15,7 @@ from helpers import *
 @click.option("--reversed", "-r", "_reversed", is_flag=True, help="Reversed order of scan, reversed"
 				+ " scan followed with forward scan. (jvc mode related)")
 @click.pass_context
-def cli(ctx, _user_path_out, _user_path_in, _user_file_paths, _reversed):
+def cli_others(ctx, _user_path_out, _user_path_in, _user_file_paths, _reversed):
 	# ensure that ctx.obj exists and is a dict (in case `cli()` is called
 	# by means other than the `if` block below)
 	ctx.ensure_object(dict)
@@ -24,85 +24,87 @@ def cli(ctx, _user_path_out, _user_path_in, _user_file_paths, _reversed):
 	ctx.obj['user_file_paths'] = get_ufp(_user_file_paths)
 	ctx.obj['reversed'] = _reversed
 
-@cli.command()
+@cli_others.command()
 @click.pass_context
 def jvc(ctx):
-		extension = "ocw"
-		jvc_template_out = ["+V [V]", "-V [V]", "+J [mA/cm2]", "-J [mA/cm2]", "+P [W/cm2]", "-P [W/cm2]"]
-		jvc_result_template = ["Scan", "Power max", "Voc [V]","Jsc [mA/cm2]", "FF", "PCE (%)"]
-		jvc_summary = []			
-		jvc_mask_area = click.prompt(
-			"Enter mask-area value which will be applied to all provided files.",
-				value_proc=check_maskarea)		
-		file_paths = ctx.obj['user_file_paths'] or get_files_at(ctx.obj['abs_path_in'], extension)
-		make_dir_at(ctx.obj['abs_path_out'])
+	"""Current–voltage characteristic + graphs"""
+	extension = "ocw"
+	jvc_template_out = ["+V [V]", "-V [V]", "+J [mA/cm2]", "-J [mA/cm2]", "+P [W/cm2]", "-P [W/cm2]"]
+	jvc_result_template = ["Scan", "Power max", "Voc [V]","Jsc [mA/cm2]", "FF", "PCE (%)"]
+	jvc_summary = []			
+	jvc_mask_area = click.prompt(
+		"Enter mask-area value which will be applied to all provided files.",
+			value_proc=check_maskarea)		
+	file_paths = ctx.obj['user_file_paths'] or get_files_at(ctx.obj['abs_path_in'], extension)
+	make_dir_at(ctx.obj['abs_path_out'])
 
-		for file in progressBar(file_paths, prefix = 'Progress:', suffix = 'Complete', length = 50):				
-			filename = extract_filename(file, extension)
-			if ctx.obj['user_file_paths']:
-				file_path_in = file
-			else:
-				file_path_in = f"{ctx.obj['abs_path_in']}/{file}"
+	for file in progressBar(file_paths, prefix = 'Progress:', suffix = 'Complete', length = 50):				
+		filename = extract_filename(file, extension)
+		if ctx.obj['user_file_paths']:
+			file_path_in = file
+		else:
+			file_path_in = f"{ctx.obj['abs_path_in']}/{file}"
 
-			file_path_out = f"{ctx.obj['abs_path_out']}/{filename}"
+		file_path_out = f"{ctx.obj['abs_path_out']}/{filename}"
 
-			# READ SOURCE
-			scan, file_lenght = read_jvc_file(file_path_in)
-			if file_lenght == 0:
-				click.echo(f"File {file} has no records")
-				continue
+		# READ SOURCE
+		scan, file_lenght = read_jvc_file(file_path_in)
+		if file_lenght == 0:
+			click.echo(f"File {file} has no records")
+			continue
 
-			voltage = []
-			_voltage = []
-			density = []
-			_density = []
-			power = []
-			_power = []
+		voltage = []
+		_voltage = []
+		density = []
+		_density = []
+		power = []
+		_power = []
 
-			middle_index = int(file_lenght / 2)		# middle index of source file
+		middle_index = int(file_lenght / 2)		# middle index of source file
 
-			# LOGIC for reversed order of data in source file
-			if not ctx.obj['reversed']:
-				f_index = 0
-				r_index = middle_index
-			else:
-				f_index = middle_index
-				r_index = 0
+		# LOGIC for reversed order of data in source file
+		if not ctx.obj['reversed']:
+			f_index = 0
+			r_index = middle_index
+		else:
+			f_index = middle_index
+			r_index = 0
 
-			for i in range(middle_index):
-				voltage.append(calc_voltage(scan[i + f_index][0]))
-				_voltage.append(calc_voltage(scan[i + r_index][0]))
-				density.append(calc_density(scan[i + f_index][1], jvc_mask_area))
-				_density.append(calc_density(scan[i + r_index][1], jvc_mask_area))
-				power.append(calc_power(voltage[i], density[i]))
-				_power.append(calc_power(_voltage[i], _density[i]))
+		for i in range(middle_index):
+			voltage.append(calc_voltage(scan[i + f_index][0]))
+			_voltage.append(calc_voltage(scan[i + r_index][0]))
+			density.append(calc_density(scan[i + f_index][1], jvc_mask_area))
+			_density.append(calc_density(scan[i + r_index][1], jvc_mask_area))
+			power.append(calc_power(voltage[i], density[i]))
+			_power.append(calc_power(_voltage[i], _density[i]))
 
-			# WRITE OUTPUT
-			output = transpose([voltage, density, _voltage, _density, power, _power])
-			write_csv_file(output, file_path_out, jvc_template_out)
+		# WRITE OUTPUT
+		output = transpose([voltage, density, _voltage, _density, power, _power])
+		write_csv_file(output, file_path_out, jvc_template_out)
 
-			# WRITE RESULTS
-			results = [
-				result_row("Forward", power, voltage, density),
-				result_row("Reverse", _power, _voltage, _density)
-			]
-			write_csv_file(results, file_path_out + "-result", jvc_result_template)
-			
-			for row in results:
-				jvc_summary.append([filename] + row)
-
-			if len(file_paths) > 1:
-				write_csv_file(jvc_summary, ctx.obj['abs_path_out'] + "/jvc_summary", jvc_result_template)
+		# WRITE RESULTS
+		results = [
+			result_row("Forward", power, voltage, density),
+			result_row("Reverse", _power, _voltage, _density)
+		]
+		write_csv_file(results, file_path_out + "-result", jvc_result_template)
 		
-			draw_graph(filename, file_path_out, density, voltage, _density, _voltage)
+		for row in results:
+			jvc_summary.append([filename] + row)
 
-			time.sleep(0.01)
+		if len(file_paths) > 1:
+			write_csv_file(jvc_summary, ctx.obj['abs_path_out'] + "/jvc_summary", jvc_result_template)
+	
+		draw_graph(filename, file_path_out, density, voltage, _density, _voltage)
 
-		finish(ctx.obj['abs_path_out'])
+		time.sleep(0.01)
 
-@cli.command()
+	finish(ctx.obj['abs_path_out'])
+
+@cli_others.command()
 @click.pass_context
 def imp(ctx):
+	"""Impedance"""
 	extension = "P00"
 	file_paths = ctx.obj['user_file_paths'] or get_files_at(ctx.obj['abs_path_in'], extension)
 	make_dir_at(ctx.obj['abs_path_out'])
@@ -126,6 +128,28 @@ def imp(ctx):
 		time.sleep(0.01)
 
 	finish(ctx.obj['abs_path_out'])
+
+@click.group()
+def cli_build():
+	pass
+
+@cli_build.command()
+def build():
+	"""Installs all required dependencies from PyPI to run Simplex"""
+	import sys, subprocess
+	with open('requirements.txt', 'r', newline='') as reader:
+		required_pkgs = reader.readlines()
+
+	pip_list = subprocess.getoutput([sys.executable, '-m', 'pip', 'list']).strip().split()[4:]	
+	current_pkgs = ['=='.join([pip_list[i], pip_list[i+1]]) for i, _ in enumerate(pip_list) if i % 2 == 0]
+
+	for pkg in required_pkgs:
+		if pkg not in current_pkgs:
+			subprocess.check_call([sys.executable, '-m', 'pip', 'install', pkg])
+
+	click.echo('All dependencies installed successfully.\nYou can run Simplex now!')
+
+cli = click.CommandCollection(sources=[cli_others, cli_build])
 
 if __name__ == '__main__':
 	cli(obj={})
