@@ -15,16 +15,17 @@ from helpers import *
 @click.option("--reversed", "-r", "_reversed", is_flag=True, help="Reversed order of scan, reversed"
 				+ " scan followed with forward scan. (jvc mode related)")
 @click.pass_context
-def cli_others(ctx, _user_path_out, _user_path_in, _user_file_paths, _reversed):
+def cli(ctx, _user_path_out, _user_path_in, _user_file_paths, _reversed):
 	# ensure that ctx.obj exists and is a dict (in case `cli()` is called
 	# by means other than the `if` block below)
 	ctx.ensure_object(dict)
-	ctx.obj['abs_path_in'] = get_abs_path_in(_user_path_in)
-	ctx.obj['abs_path_out'] = get_abs_path_out(_user_path_out)
-	ctx.obj['user_file_paths'] = get_ufp(_user_file_paths)
-	ctx.obj['reversed'] = _reversed
+	if ctx.invoked_subcommand != 'build':
+		ctx.obj['abs_path_in'] = get_abs_path_in(_user_path_in)
+		ctx.obj['abs_path_out'] = get_abs_path_out(_user_path_out)
+		ctx.obj['user_file_paths'] = get_ufp(_user_file_paths)
+		ctx.obj['reversed'] = _reversed
 
-@cli_others.command()
+@cli.command()
 @click.pass_context
 def jvc(ctx):
 	"""Current–voltage characteristic + graphs"""
@@ -101,7 +102,7 @@ def jvc(ctx):
 
 	finish(ctx.obj['abs_path_out'])
 
-@cli_others.command()
+@cli.command()
 @click.pass_context
 def imp(ctx):
 	"""Impedance"""
@@ -129,16 +130,17 @@ def imp(ctx):
 
 	finish(ctx.obj['abs_path_out'])
 
-@click.group()
-def cli_build():
-	pass
-
-@cli_build.command()
+@cli.command()
 def build():
 	"""Installs all required dependencies from PyPI to run Simplex"""
 	import sys, subprocess
-	with open('requirements.txt', 'r', newline='') as reader:
-		required_pkgs = reader.readlines()
+	try:
+		with open('requirements.txt', 'r', newline='') as reader:
+			required_pkgs = reader.readlines()
+	except FileNotFoundError as err:
+		raise SystemExit('File including depencencies not found\n \
+						You will have to install them manually.\n \
+						' + err)
 
 	pip_list = subprocess.getoutput([sys.executable, '-m', 'pip', 'list']).strip().split()[4:]	
 	current_pkgs = ['=='.join([pip_list[i], pip_list[i+1]]) for i, _ in enumerate(pip_list) if i % 2 == 0]
@@ -149,7 +151,6 @@ def build():
 
 	click.echo('All dependencies installed successfully.\nYou can run Simplex now!')
 
-cli = click.CommandCollection(sources=[cli_others, cli_build])
 
 if __name__ == '__main__':
 	cli(obj={})

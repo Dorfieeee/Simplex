@@ -59,8 +59,10 @@ def finish(path):
 
 def read_imp_file(path):
 	data = []
-	with open(path, 'r', newline='') as reader:
-		for line in reader.readlines()[6:]: # skip first 6 lines
+	with open(path, 'rb') as reader:
+		# decode and skip first 6 lines
+		text = reader.read().decode(errors='replace').split('\r\n')[6:-1]
+		for line in text:
 			line = ''.join(line).strip().split()
 			data.append( [float(val) for val in line] )
 	return data
