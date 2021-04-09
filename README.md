@@ -61,6 +61,9 @@ $ python -m pip install -U click
 $ python -m pip install -U matplotlib
 ```
 
+### Other
+If you find any problems running this program or you'd like the program to have other functionalities, please, do not hesitate and contact me.
+
 License
 ----
 
