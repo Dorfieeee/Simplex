@@ -1,7 +1,26 @@
 import time
-import click
-from helpers import *
+import sys
 
+def build():
+	"""Installs all required dependencies from PyPI to run Simplex"""
+	import subprocess
+	from os import listdir, getcwd
+	from os.path import isfile, join
+	onlyfiles = [f for f in listdir(getcwd()) if isfile(join(getcwd(), f))]
+
+	if not 'requirements.txt' in onlyfiles:
+		raise SystemExit('File including depencencies not found. You will have to install them manually.')
+
+	subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'])
+
+	print('All dependencies installed successfully.\nYou can run Simplex now!')
+
+if sys.argv[1] == 'build':
+	build()
+	sys.exit(0)
+
+from helpers import *
+import click
 @click.group()
 # TUPLE OF PROVIDED FILES PATHS [optional]
 @click.option("--file", "-f", "_user_file_paths", help="""Provide one or more
@@ -30,7 +49,7 @@ def cli(ctx, _user_path_out, _user_path_in, _user_file_paths, _reversed):
 def jvc(ctx):
 	"""Current–voltage characteristic + graphs"""
 	extension = "ocw"
-	jvc_template_out = ["+V [V]", "-V [V]", "+J [mA/cm2]", "-J [mA/cm2]", "+P [W/cm2]", "-P [W/cm2]"]
+	jvc_template_out = ["+V [V]", "+J [mA/cm2]", "-V [V]", "-J [mA/cm2]", "+P [W/cm2]", "-P [W/cm2]"]
 	jvc_result_template = ["Scan", "Power max", "Voc [V]","Jsc [mA/cm2]", "FF", "PCE (%)"]
 	jvc_summary = []			
 	jvc_mask_area = click.prompt(
@@ -129,28 +148,6 @@ def imp(ctx):
 		time.sleep(0.01)
 
 	finish(ctx.obj['abs_path_out'])
-
-@cli.command()
-def build():
-	"""Installs all required dependencies from PyPI to run Simplex"""
-	import sys, subprocess
-	try:
-		with open('requirements.txt', 'r', newline='') as reader:
-			required_pkgs = reader.readlines()
-	except FileNotFoundError as err:
-		raise SystemExit('File including depencencies not found\n \
-						You will have to install them manually.\n \
-						' + err)
-
-	pip_list = subprocess.getoutput([sys.executable, '-m', 'pip', 'list']).strip().split()[4:]	
-	current_pkgs = ['=='.join([pip_list[i], pip_list[i+1]]) for i, _ in enumerate(pip_list) if i % 2 == 0]
-
-	for pkg in required_pkgs:
-		if pkg not in current_pkgs:
-			subprocess.check_call([sys.executable, '-m', 'pip', 'install', pkg])
-
-	click.echo('All dependencies installed successfully.\nYou can run Simplex now!')
-
 
 if __name__ == '__main__':
 	cli(obj={})
