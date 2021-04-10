@@ -52,13 +52,13 @@ $ python -m pip install -U pip
 * [Click] - Python CLI
 
 ```sh
-$ python -m pip install -U click
+$ python -m pip install click==7.1.2
 ```
 
 * [Matplotlib] - Matplotlib is a comprehensive library for creating static,
                  animated, and interactive visualizations in Python.
 ```sh
-$ python -m pip install -U matplotlib
+$ python -m pip install matplotlib==3.3.2
 ```
 
 ### Other
